@@ -8,6 +8,7 @@
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "test:e2e": "node tests/e2e-smoke.mjs && node tests/e2e-real-roles.mjs"
+    ,"test:e2e:feeding": "node tests/e2e-feeding-recommend.mjs"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
