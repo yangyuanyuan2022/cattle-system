@@ -11,6 +11,8 @@ public record UpdateCattleRequest(
         @NotBlank @Size(max = 50) String earTagNo,
         @Size(max = 50) String name,
         LocalDate birthDate,
+        String sireId,
+        @Size(max = 100) String sireText,
         @Size(max = 500) String remark,
         @NotBlank @Size(max = 500) String changeReason,
         @NotNull @Min(0) Integer version

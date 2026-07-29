@@ -18,6 +18,8 @@ public record CreateCattleRequest(
         @NotBlank @Pattern(regexp = "CALF|GROWING|RESERVE|COW|BULL") String lifecycleStage,
         String herdId,
         String barnId,
+        String sireId,
+        @Size(max = 100) String sireText,
         @Size(max = 500) String remark
 ) {
 }
