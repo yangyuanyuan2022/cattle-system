@@ -1,0 +1,3 @@
+package com.cattlefarm.admin.audit;
+import java.time.LocalDateTime;import java.util.List;
+public final class AuditDtos{private AuditDtos(){}public record Page<T>(long total,int page,int pageSize,List<T>items){}public record Operation(String operationId,String operatorName,String moduleCode,String actionType,String businessType,String businessId,String reason,LocalDateTime createdAt){}public record Login(String loginId,String account,String operatorName,String result,String failureReason,String clientIp,LocalDateTime createdAt){}public record Export(String exportId,String operatorName,String module,String filterCondition,String status,String fileName,Integer rowCount,String failReason,LocalDateTime expiredAt,LocalDateTime createdAt){} }

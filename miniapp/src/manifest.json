@@ -1,0 +1,17 @@
+{
+  "name": "牧衡牛场",
+  "appid": "__UNI__CATTLE_SYSTEM",
+  "description": "肉牛现场管理小程序",
+  "versionName": "0.1.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "mp-weixin": {
+    "appid": "touristappid",
+    "setting": {
+      "urlCheck": false,
+      "es6": true,
+      "minified": true
+    },
+    "usingComponents": true
+  }
+}

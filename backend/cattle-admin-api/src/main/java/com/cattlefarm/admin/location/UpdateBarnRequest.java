@@ -1,0 +1,1 @@
+package com.cattlefarm.admin.location;import jakarta.validation.constraints.*;public record UpdateBarnRequest(@NotBlank@Size(max=100)String barnName,@Size(max=30)String barnType,@Min(0)Integer capacity,@NotBlank@Pattern(regexp="ENABLED|DISABLED")String status,@Size(max=500)String remark,@NotNull Integer version){}

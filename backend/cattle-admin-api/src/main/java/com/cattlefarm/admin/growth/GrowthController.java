@@ -1,0 +1,13 @@
+package com.cattlefarm.admin.growth;
+import cn.dev33.satoken.annotation.*;import com.cattlefarm.common.api.ApiResponse;import com.cattlefarm.admin.correction.*;import jakarta.validation.Valid;import jakarta.validation.constraints.NotBlank;import org.springframework.web.bind.annotation.*;import java.util.List;
+@RestController @RequestMapping("/api/v1/growth")
+public class GrowthController{private final GrowthService service;private final BusinessCorrectionService corrections;public GrowthController(GrowthService service,BusinessCorrectionService corrections){this.service=service;this.corrections=corrections;}
+ @GetMapping("/weights")public ApiResponse<List<GrowthDtos.WeightItem>>weights(@RequestParam(name="cattleId",required=false)String id){return ApiResponse.success(service.weights(id));}
+ @PostMapping("/weights")@SaCheckRole(value={"ADMIN","FARM_MANAGER","WORKER"},mode=SaMode.OR)public ApiResponse<GrowthDtos.WeightItem>weight(@RequestHeader("X-Idempotency-Key")@NotBlank String key,@Valid @RequestBody GrowthDtos.CreateWeight r){return ApiResponse.success(service.recordWeight(r,key));}
+ @GetMapping("/body-conditions")public ApiResponse<List<GrowthDtos.BodyConditionItem>>conditions(@RequestParam(name="cattleId",required=false)String id){return ApiResponse.success(service.bodyConditions(id));}
+ @PostMapping("/body-conditions")@SaCheckRole(value={"ADMIN","FARM_MANAGER","WORKER"},mode=SaMode.OR)public ApiResponse<GrowthDtos.BodyConditionItem>condition(@RequestHeader("X-Idempotency-Key")@NotBlank String key,@Valid @RequestBody GrowthDtos.CreateBodyCondition r){return ApiResponse.success(service.recordBodyCondition(r,key));}
+ @GetMapping("/trends")public ApiResponse<GrowthDtos.Trend>trend(@RequestParam("cattleId")@NotBlank String id){return ApiResponse.success(service.trend(id));}
+ @GetMapping("/herd-trends")public ApiResponse<GrowthDtos.HerdTrend>herdTrend(@RequestParam("herdId")@NotBlank String id){return ApiResponse.success(service.herdTrend(id));}
+ @PostMapping("/weights/{id}/void")@SaCheckRole(value={"ADMIN","FARM_MANAGER","WORKER"},mode=SaMode.OR)public ApiResponse<CorrectionResult>voidWeight(@PathVariable long id,@RequestHeader("X-Idempotency-Key")@NotBlank String key,@Valid@RequestBody VoidBusinessRequest r){return ApiResponse.success(corrections.voidGrowth("WEIGHT",id,r,key));}
+ @PostMapping("/body-conditions/{id}/void")@SaCheckRole(value={"ADMIN","FARM_MANAGER","WORKER"},mode=SaMode.OR)public ApiResponse<CorrectionResult>voidCondition(@PathVariable long id,@RequestHeader("X-Idempotency-Key")@NotBlank String key,@Valid@RequestBody VoidBusinessRequest r){return ApiResponse.success(corrections.voidGrowth("BODY_CONDITION",id,r,key));}
+}

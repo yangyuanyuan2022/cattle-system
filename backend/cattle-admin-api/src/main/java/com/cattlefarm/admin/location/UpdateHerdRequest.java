@@ -1,0 +1,1 @@
+package com.cattlefarm.admin.location;import jakarta.validation.constraints.*;public record UpdateHerdRequest(@NotBlank@Size(max=100)String herdName,@Size(max=30)String herdType,String barnId,@NotBlank@Pattern(regexp="ENABLED|DISABLED")String status,@Size(max=500)String remark,@NotNull Integer version){}

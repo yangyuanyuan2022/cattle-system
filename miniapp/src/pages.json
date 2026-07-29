@@ -1,0 +1,32 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/index",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/tasks/index",
+      "style": { "navigationBarTitleText": "我的任务", "enablePullDownRefresh": true }
+    },
+    {
+      "path": "pages/cattle/index",
+      "style": { "navigationBarTitleText": "查牛" }
+    }
+  ],
+  "tabBar": {
+    "color": "#77827f",
+    "selectedColor": "#176b52",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      { "pagePath": "pages/tasks/index", "text": "任务" },
+      { "pagePath": "pages/cattle/index", "text": "查牛" }
+    ]
+  },
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "牧衡牛场",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f3f5f4"
+  }
+}

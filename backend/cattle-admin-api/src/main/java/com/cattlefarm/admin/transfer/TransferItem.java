@@ -1,0 +1,1 @@
+package com.cattlefarm.admin.transfer;import java.time.LocalDateTime;public record TransferItem(String transferId,String batchId,String cattleId,String earTagNo,String fromBarnName,String fromHerdName,String toBarnName,String toHerdName,LocalDateTime transferDate,String reason,String operatorName,boolean voided){}
