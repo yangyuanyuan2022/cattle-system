@@ -5,11 +5,18 @@ export interface Ingredient {
   ingredientType: string;
   dryMatterPct: number;
   tdnPct: number | null;
+  metabolizableEnergyValue: number | null;
   crudeProteinPct: number;
   starchPct: number | null;
   energyValue: number | null;
   gainEnergyValue: number | null;
   ndfPct: number;
+  peNdfPct: number | null;
+  adfPct: number | null;
+  ashPct: number | null;
+  crudeFatPct: number | null;
+  calciumPct: number | null;
+  phosphorusPct: number | null;
   rdpPct: number | null;
   unitPrice: number;
   status: string;
@@ -52,8 +59,20 @@ export interface FormulaRecommendation {
   estimatedTdnPct: number;
   estimatedStarchPct: number;
   estimatedRdpPct: number;
+  estimatedMetabolizableEnergy: number;
   estimatedMaintenanceNetEnergy: number;
   estimatedGainNetEnergy: number;
+  estimatedPeNdfPct: number | null;
+  estimatedAdfPct: number | null;
+  estimatedAshPct: number | null;
+  estimatedCrudeFatPct: number | null;
+  estimatedCalciumPct: number | null;
+  estimatedPhosphorusPct: number | null;
+  dryMatterUnitPrice: number;
+  metabolizableEnergyDailyMcal: number;
+  maintenanceEnergyDailyMcal: number;
+  gainEnergyDailyMcal: number;
+  crudeProteinDailyKg: number;
   roughageDryMatterPct: number;
   proteinFeedDryMatterPct: number;
   estimatedDailyCost: number;
@@ -71,6 +90,11 @@ export interface FormulaRecommendation {
     ndfPct:number;
     maintenanceNetEnergy:number;
     gainNetEnergy:number;
+    crudeProteinRequiredKg:number;
+    maintenanceEnergyRequiredMcal:number;
+    gainEnergyRequiredMcal:number;
+    productionStage:string;
+    sourceStandard:string;
   };
   items: { ingredientId:string; ingredientName:string; ingredientType:string; ratioPct:number; dailyAmountKg:number }[];
   warnings: string[];
@@ -165,6 +189,9 @@ export async function updateIngredient(id: string, p: Record<string, unknown>) {
     })
   ).data.data;
 }
+export async function deleteIngredient(id: string) {
+  return (await http.delete<ApiResponse<boolean>>(`/feeding/ingredients/${id}`, { headers: key() })).data.data;
+}
 export async function getFormulas() {
   return (await http.get<ApiResponse<Formula[]>>("/feeding/ration-formulas"))
     .data.data;
@@ -178,12 +205,14 @@ export async function createFormula(p: Record<string, unknown>) {
 }
 export async function recommendFormula(p: {
   bodySize:string;
+  productionStage:string;
   currentWeightKg:number;
   targetWeightKg:number;
   feedingDays:number;
   roughageDryMatterPct:number;
   proteinFeedDryMatterPct?:number;
   ingredientIds:string[];
+  ingredientRatios?: { ingredientId:string; dryMatterRatioPct:number }[];
 }) {
   return (
     await http.post<ApiResponse<FormulaRecommendation>>(
@@ -191,6 +220,21 @@ export async function recommendFormula(p: {
       p,
     )
   ).data.data;
+}
+export async function optimizeConcentrate(p: {
+  ingredientIds:string[];
+  targetCrudeProteinPct:number;
+  minimumMetabolizableEnergy:number;
+  maximumNdfPct:number;
+  maximumCrudeFatPct:number;
+  minimumStarchPct:number;
+  maximumStarchPct:number;
+}) {
+  return (await http.post<ApiResponse<{
+    ratios:{ ingredientId:string; dryMatterRatioPct:number }[];
+    estimatedUnitPrice:number;
+    warnings:string[];
+  }>>("/feeding/concentrates/optimize", p)).data.data;
 }
 export async function recommendMicronutrients(p: {
   productionStage:string;
@@ -245,9 +289,24 @@ export async function activateFormula(id: string, version = 0) {
     )
   ).data.data;
 }
+export async function deactivateFormula(id: string, version = 0) {
+  return (
+    await http.post<ApiResponse<Formula>>(
+      `/feeding/ration-formulas/${id}/deactivate`,
+      { reason: "人工停用配方", version },
+      { headers: key() },
+    )
+  ).data.data;
+}
+export async function deleteFormula(id: string) {
+  return (await http.delete<ApiResponse<boolean>>(`/feeding/ration-formulas/${id}`, { headers: key() })).data.data;
+}
 export async function getOrders() {
   return (await http.get<ApiResponse<MixingOrder[]>>("/feeding/mixing-orders"))
     .data.data;
+}
+export async function deleteOrder(id: string) {
+  return (await http.delete<ApiResponse<boolean>>(`/feeding/mixing-orders/${id}`, { headers: key() })).data.data;
 }
 export async function createOrder(p: Record<string, unknown>) {
   return (
@@ -305,4 +364,7 @@ export async function getExecutions() {
   return (
     await http.get<ApiResponse<MixingExecution[]>>("/feeding/mixing-executions")
   ).data.data;
+}
+export async function deleteExecution(id: string) {
+  return (await http.delete<ApiResponse<boolean>>(`/feeding/mixing-executions/${id}`, { headers: key() })).data.data;
 }
