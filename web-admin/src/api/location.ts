@@ -1,4 +1,5 @@
 import { http, type ApiResponse } from "./http";
+const key = () => ({ "X-Idempotency-Key": crypto.randomUUID() });
 export interface Barn {
   barnId: string;
   barnCode: string;
@@ -47,8 +48,11 @@ export async function getBarns(status?: string) {
   return r.data.data;
 }
 export async function createBarn(payload: Record<string, unknown>) {
-  const r = await http.post<ApiResponse<Barn>>("/barns", payload);
+  const r = await http.post<ApiResponse<Barn>>("/barns", payload, { headers: key() });
   return r.data.data;
+}
+export async function deleteBarn(id: string) {
+  return (await http.delete<ApiResponse<boolean>>(`/barns/${id}`, { headers: key() })).data.data;
 }
 export async function updateBarn(id: string, payload: Record<string, unknown>) {
   const r = await http.put<ApiResponse<Barn>>(`/barns/${id}`, payload, {
@@ -63,8 +67,11 @@ export async function getHerds(status?: string) {
   return r.data.data;
 }
 export async function createHerd(payload: Record<string, unknown>) {
-  const r = await http.post<ApiResponse<Herd>>("/herds", payload);
+  const r = await http.post<ApiResponse<Herd>>("/herds", payload, { headers: key() });
   return r.data.data;
+}
+export async function deleteHerd(id: string) {
+  return (await http.delete<ApiResponse<boolean>>(`/herds/${id}`, { headers: key() })).data.data;
 }
 export async function updateHerd(id: string, payload: Record<string, unknown>) {
   const r = await http.put<ApiResponse<Herd>>(`/herds/${id}`, payload, {

@@ -8,8 +8,10 @@ public class LocationController {
  @PostMapping("/barns") @SaCheckRole(value={"ADMIN","FARM_MANAGER"},mode=SaMode.OR)
  public ApiResponse<BarnResponse> createBarn(@RequestHeader("X-Idempotency-Key")@NotBlank String key,@Valid @RequestBody CreateBarnRequest r){return ApiResponse.success(service.createBarn(r,key));}
  @PutMapping("/barns/{id}") @SaCheckRole(value={"ADMIN","FARM_MANAGER"},mode=SaMode.OR) public ApiResponse<BarnResponse>updateBarn(@PathVariable("id")long id,@RequestHeader("X-Idempotency-Key")@NotBlank String key,@Valid@RequestBody UpdateBarnRequest r){return ApiResponse.success(service.updateBarn(id,r,key));}
+ @DeleteMapping("/barns/{id}") @SaCheckRole(value={"ADMIN","FARM_MANAGER"},mode=SaMode.OR) public ApiResponse<Boolean>deleteBarn(@PathVariable("id")long id,@RequestHeader("X-Idempotency-Key")@NotBlank String key){return ApiResponse.success(service.deleteBarn(id,key));}
  @GetMapping("/herds") public ApiResponse<List<HerdResponse>> herds(@RequestParam(name="status",required=false) String status){return ApiResponse.success(service.herds(status));}
  @PostMapping("/herds") @SaCheckRole(value={"ADMIN","FARM_MANAGER"},mode=SaMode.OR)
  public ApiResponse<HerdResponse> createHerd(@RequestHeader("X-Idempotency-Key")@NotBlank String key,@Valid @RequestBody CreateHerdRequest r){return ApiResponse.success(service.createHerd(r,key));}
  @PutMapping("/herds/{id}") @SaCheckRole(value={"ADMIN","FARM_MANAGER"},mode=SaMode.OR) public ApiResponse<HerdResponse>updateHerd(@PathVariable("id")long id,@RequestHeader("X-Idempotency-Key")@NotBlank String key,@Valid@RequestBody UpdateHerdRequest r){return ApiResponse.success(service.updateHerd(id,r,key));}
+ @DeleteMapping("/herds/{id}") @SaCheckRole(value={"ADMIN","FARM_MANAGER"},mode=SaMode.OR) public ApiResponse<Boolean>deleteHerd(@PathVariable("id")long id,@RequestHeader("X-Idempotency-Key")@NotBlank String key){return ApiResponse.success(service.deleteHerd(id,key));}
 }

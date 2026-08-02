@@ -4,9 +4,20 @@ export interface Ingredient {
   ingredientName: string;
   ingredientType: string;
   dryMatterPct: number;
+  tdnPct: number | null;
+  metabolizableEnergyValue: number | null;
   crudeProteinPct: number;
+  starchPct: number | null;
   energyValue: number | null;
+  gainEnergyValue: number | null;
   ndfPct: number;
+  peNdfPct: number | null;
+  adfPct: number | null;
+  ashPct: number | null;
+  crudeFatPct: number | null;
+  calciumPct: number | null;
+  phosphorusPct: number | null;
+  rdpPct: number | null;
   unitPrice: number;
   status: string;
   remark: string | null;
@@ -34,6 +45,59 @@ export interface Formula {
   dailyCost: number;
   items: FormulaLine[];
   rowVersion: number;
+}
+export interface FormulaRecommendation {
+  averageDailyGainKg: number;
+  dryMatterTargetKg: number;
+  dailyIntakeKg: number;
+  estimatedCrudeProteinPct: number;
+  crudeProteinTargetMinPct: number;
+  crudeProteinTargetMaxPct: number;
+  estimatedNdfPct: number;
+  ndfTargetMinPct: number;
+  ndfTargetMaxPct: number;
+  estimatedTdnPct: number;
+  estimatedStarchPct: number;
+  estimatedRdpPct: number;
+  estimatedMetabolizableEnergy: number;
+  estimatedMaintenanceNetEnergy: number;
+  estimatedGainNetEnergy: number;
+  estimatedPeNdfPct: number | null;
+  estimatedAdfPct: number | null;
+  estimatedAshPct: number | null;
+  estimatedCrudeFatPct: number | null;
+  estimatedCalciumPct: number | null;
+  estimatedPhosphorusPct: number | null;
+  dryMatterUnitPrice: number;
+  metabolizableEnergyDailyMcal: number;
+  maintenanceEnergyDailyMcal: number;
+  gainEnergyDailyMcal: number;
+  crudeProteinDailyKg: number;
+  roughageDryMatterPct: number;
+  proteinFeedDryMatterPct: number;
+  estimatedDailyCost: number;
+  pricedCostCoveragePct: number;
+  missingPriceIngredients: string[];
+  standardTarget: {
+    bodySize:string;
+    referenceWeightKg:number;
+    referenceDailyGainKg:number;
+    dryMatterIntakeKg:number;
+    tdnPct:number;
+    crudeProteinPct:number;
+    rdpPct:number;
+    starchPct:number;
+    ndfPct:number;
+    maintenanceNetEnergy:number;
+    gainNetEnergy:number;
+    crudeProteinRequiredKg:number;
+    maintenanceEnergyRequiredMcal:number;
+    gainEnergyRequiredMcal:number;
+    productionStage:string;
+    sourceStandard:string;
+  };
+  items: { ingredientId:string; ingredientName:string; ingredientType:string; ratioPct:number; dailyAmountKg:number }[];
+  warnings: string[];
 }
 export interface OrderLine {
   ingredientId: string;
@@ -64,6 +128,48 @@ export interface MixingExecution {
   actualSummary: string;
   deviationNote: string | null;
 }
+export interface MicronutrientRecommendation {
+  productionStage: "GROWING" | "PREGNANT" | "LACTATING";
+  dryMatterIntakeKg: number;
+  cattleCount: number;
+  items: {
+    category: string;
+    nutrientName: string;
+    concentrationUnit: string;
+    targetMin: number;
+    targetMax: number;
+    intakeUnit: string;
+    dailyMinPerHead: number;
+    dailyMaxPerHead: number;
+    herdDailyMin: number;
+    herdDailyMax: number;
+    maximumTolerableConcentration: string | null;
+    deficiencySymptoms: string;
+  }[];
+  warnings: string[];
+}
+export interface BreedingNutrients {
+  dryMatterIntakeKg: number;
+  crudeProteinG: number;
+  tdnKg: number;
+  digestibleEnergyMcal: number;
+  metabolizableEnergyMcal: number;
+  calciumG: number;
+  phosphorusG: number;
+  vitaminAThousandIu: number;
+}
+export interface BreedingNutritionRecommendation {
+  productionStage: "REPLACEMENT_GROWTH" | "MAINTENANCE" | "LATE_PREGNANCY" | "LACTATION";
+  referenceWeightKg: number;
+  cattleCount: number;
+  perHeadDaily: BreedingNutrients;
+  herdDaily: BreedingNutrients;
+  crudeProteinPct: number;
+  tdnPct: number;
+  calciumPct: number;
+  phosphorusPct: number;
+  warnings: string[];
+}
 const key = () => ({ "X-Idempotency-Key": crypto.randomUUID() });
 export async function getIngredients() {
   return (await http.get<ApiResponse<Ingredient[]>>("/feeding/ingredients"))
@@ -83,6 +189,9 @@ export async function updateIngredient(id: string, p: Record<string, unknown>) {
     })
   ).data.data;
 }
+export async function deleteIngredient(id: string) {
+  return (await http.delete<ApiResponse<boolean>>(`/feeding/ingredients/${id}`, { headers: key() })).data.data;
+}
 export async function getFormulas() {
   return (await http.get<ApiResponse<Formula[]>>("/feeding/ration-formulas"))
     .data.data;
@@ -92,6 +201,64 @@ export async function createFormula(p: Record<string, unknown>) {
     await http.post<ApiResponse<Formula>>("/feeding/ration-formulas", p, {
       headers: key(),
     })
+  ).data.data;
+}
+export async function recommendFormula(p: {
+  bodySize:string;
+  productionStage:string;
+  currentWeightKg:number;
+  targetWeightKg:number;
+  feedingDays:number;
+  roughageDryMatterPct:number;
+  proteinFeedDryMatterPct?:number;
+  ingredientIds:string[];
+  ingredientRatios?: { ingredientId:string; dryMatterRatioPct:number }[];
+}) {
+  return (
+    await http.post<ApiResponse<FormulaRecommendation>>(
+      "/feeding/ration-formulas/recommend",
+      p,
+    )
+  ).data.data;
+}
+export async function optimizeConcentrate(p: {
+  ingredientIds:string[];
+  targetCrudeProteinPct:number;
+  minimumMetabolizableEnergy:number;
+  maximumNdfPct:number;
+  maximumCrudeFatPct:number;
+  minimumStarchPct:number;
+  maximumStarchPct:number;
+}) {
+  return (await http.post<ApiResponse<{
+    ratios:{ ingredientId:string; dryMatterRatioPct:number }[];
+    estimatedUnitPrice:number;
+    warnings:string[];
+  }>>("/feeding/concentrates/optimize", p)).data.data;
+}
+export async function recommendMicronutrients(p: {
+  productionStage:string;
+  dryMatterIntakeKg:number;
+  cattleCount:number;
+}) {
+  return (
+    await http.post<ApiResponse<MicronutrientRecommendation>>(
+      "/feeding/micronutrients/recommend",
+      p,
+    )
+  ).data.data;
+}
+export async function recommendBreedingNutrition(p: {
+  productionStage: string;
+  weightKg: number;
+  milkKgPerDay?: number;
+  cattleCount: number;
+}) {
+  return (
+    await http.post<ApiResponse<BreedingNutritionRecommendation>>(
+      "/feeding/breeding-nutrition/recommend",
+      p,
+    )
   ).data.data;
 }
 export async function updateFormula(id: string, p: Record<string, unknown>) {
@@ -122,9 +289,24 @@ export async function activateFormula(id: string, version = 0) {
     )
   ).data.data;
 }
+export async function deactivateFormula(id: string, version = 0) {
+  return (
+    await http.post<ApiResponse<Formula>>(
+      `/feeding/ration-formulas/${id}/deactivate`,
+      { reason: "人工停用配方", version },
+      { headers: key() },
+    )
+  ).data.data;
+}
+export async function deleteFormula(id: string) {
+  return (await http.delete<ApiResponse<boolean>>(`/feeding/ration-formulas/${id}`, { headers: key() })).data.data;
+}
 export async function getOrders() {
   return (await http.get<ApiResponse<MixingOrder[]>>("/feeding/mixing-orders"))
     .data.data;
+}
+export async function deleteOrder(id: string) {
+  return (await http.delete<ApiResponse<boolean>>(`/feeding/mixing-orders/${id}`, { headers: key() })).data.data;
 }
 export async function createOrder(p: Record<string, unknown>) {
   return (
@@ -182,4 +364,7 @@ export async function getExecutions() {
   return (
     await http.get<ApiResponse<MixingExecution[]>>("/feeding/mixing-executions")
   ).data.data;
+}
+export async function deleteExecution(id: string) {
+  return (await http.delete<ApiResponse<boolean>>(`/feeding/mixing-executions/${id}`, { headers: key() })).data.data;
 }

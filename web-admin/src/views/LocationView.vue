@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { Plus } from "@element-plus/icons-vue";
 import {
   createBarn,
   createHerd,
+  deleteBarn,
+  deleteHerd,
   getBarns,
   getHerds,
   updateBarn,
@@ -147,6 +149,30 @@ async function saveHerd() {
     saving.value = false;
   }
 }
+async function removeBarn(row: Barn) {
+  try {
+    await ElMessageBox.confirm(`确定删除栏舍“${row.barnName}”吗？只有从未被使用的栏舍才能删除。`, "删除栏舍", { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消", confirmButtonClass: "el-button--danger" });
+  } catch { return; }
+  try {
+    await deleteBarn(row.barnId);
+    ElMessage.success("栏舍已删除");
+    await load();
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || "删除失败");
+  }
+}
+async function removeHerd(row: Herd) {
+  try {
+    await ElMessageBox.confirm(`确定删除牛群“${row.herdName}”吗？只有从未被使用的牛群才能删除。`, "删除牛群", { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消", confirmButtonClass: "el-button--danger" });
+  } catch { return; }
+  try {
+    await deleteHerd(row.herdId);
+    ElMessage.success("牛群已删除");
+    await load();
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || "删除失败");
+  }
+}
 onMounted(load);
 </script>
 <template>
@@ -188,10 +214,10 @@ onMounted(load);
                 >{{ s.row.status === "ENABLED" ? "启用" : "停用" }}</el-tag
               ></template
             ></el-table-column
-          ><el-table-column v-if="canManage" label="操作" width="70"
+          ><el-table-column v-if="canManage" label="操作" width="120"
             ><template #default="s"
               ><el-button link type="primary" @click="openBarn(s.row)"
-                >编辑</el-button
+                >编辑</el-button><el-button link type="danger" @click="removeBarn(s.row)">删除</el-button
               ></template
             ></el-table-column
           ></el-table
@@ -224,10 +250,10 @@ onMounted(load);
                 >{{ s.row.status === "ENABLED" ? "启用" : "停用" }}</el-tag
               ></template
             ></el-table-column
-          ><el-table-column v-if="canManage" label="操作" width="70"
+          ><el-table-column v-if="canManage" label="操作" width="120"
             ><template #default="s"
               ><el-button link type="primary" @click="openHerd(s.row)"
-                >编辑</el-button
+                >编辑</el-button><el-button link type="danger" @click="removeHerd(s.row)">删除</el-button
               ></template
             ></el-table-column
           ></el-table
