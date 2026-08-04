@@ -16,6 +16,8 @@ export interface CattleRecord {
   breedingStatus: string | null;
   herdId: string | null;
   barnId: string | null;
+  sireId: string | null;
+  sireText: string | null;
   remark: string | null;
   createdAt: string;
   version: number;
@@ -61,6 +63,8 @@ export interface CreateCattlePayload {
   lifecycleStage: "CALF" | "GROWING" | "RESERVE" | "COW" | "BULL";
   herdId?: string;
   barnId?: string;
+  sireId?: string;
+  sireText?: string;
   remark?: string;
 }
 
@@ -68,6 +72,8 @@ export interface UpdateCattlePayload {
   earTagNo: string;
   name?: string;
   birthDate?: string;
+  sireId?: string;
+  sireText?: string;
   remark?: string;
   changeReason: string;
   version: number;

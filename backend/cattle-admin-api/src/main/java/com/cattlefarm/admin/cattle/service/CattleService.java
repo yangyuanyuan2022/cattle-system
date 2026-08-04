@@ -64,7 +64,10 @@ public class CattleService {
         Long breedId = parseOptionalId(request.breedId(), "品种");
         Long herdId = parseOptionalId(request.herdId(), "牛群");
         Long barnId = parseOptionalId(request.barnId(), "栏舍");
+        Long sireId = parseOptionalId(request.sireId(), "父系");
+        String sireText = normalizeSireText(request.sireText());
         validateCreateRelations(farmId, breedId, herdId, barnId);
+        validateSire(farmId, sireId, sireText, null);
 
         long cattleId = IdWorker.getId();
         jdbcTemplate.update("""
@@ -87,6 +90,8 @@ public class CattleService {
         cattle.setHealthStatus("NORMAL");
         cattle.setHerdId(herdId);
         cattle.setBarnId(barnId);
+        cattle.setSireId(sireId);
+        cattle.setSireText(sireText);
         cattle.setRemark(request.remark());
         cattle.setCreatedBy(userId);
         cattle.setUpdatedBy(userId);
@@ -194,6 +199,9 @@ public class CattleService {
 
         CattleResponse before = detail(cattleId);
         String newEarTag = request.earTagNo().trim();
+        Long sireId = parseOptionalId(request.sireId(), "父系");
+        String sireText = normalizeSireText(request.sireText());
+        validateSire(farmId, sireId, sireText, cattleId);
         if (!"IN_FIELD".equals(before.presenceStatus()) && !Objects.equals(before.earTagNo(), newEarTag)) {
             throw new DataConflictException("已离场牛只不可修改耳号");
         }
@@ -205,13 +213,14 @@ public class CattleService {
                 cattleId, LocalDateTime.now().plusDays(1));
 
         int affected = jdbcTemplate.update("""
-                UPDATE cattle SET ear_tag_no=?, name=?, birth_date=?, remark=?, updated_by=?, version=version+1
+                UPDATE cattle SET ear_tag_no=?, name=?, birth_date=?, sire_id=?, sire_text=?, remark=?,
+                    updated_by=?, version=version+1
                 WHERE cattle_id=? AND farm_id=? AND version=?
-                """, newEarTag, request.name(), request.birthDate(), request.remark(), userId,
+                """, newEarTag, request.name(), request.birthDate(), sireId, sireText, request.remark(), userId,
                 cattleId, farmId, request.version());
         if (affected == 0) throw new DataConflictException("档案已被其他人修改，请刷新后重试");
 
-        CattleResponse after = correctedSnapshot(before, request, newEarTag);
+        CattleResponse after = correctedSnapshot(before, request, newEarTag, sireId, sireText);
         long operationLogId = IdWorker.getId();
         jdbcTemplate.update("""
                 INSERT INTO operation_log(operation_log_id,farm_id,user_id,module_code,action_type,
@@ -305,6 +314,8 @@ public class CattleService {
         data.put("earTagNo", cattle.earTagNo());
         data.put("name", cattle.name());
         data.put("birthDate", cattle.birthDate());
+        data.put("sireId", cattle.sireId());
+        data.put("sireText", cattle.sireText());
         data.put("remark", cattle.remark());
         data.put("version", cattle.version());
         try {
@@ -314,19 +325,22 @@ public class CattleService {
         }
     }
 
-    private CattleResponse correctedSnapshot(CattleResponse before, UpdateCattleRequest request, String earTagNo) {
+    private CattleResponse correctedSnapshot(CattleResponse before, UpdateCattleRequest request, String earTagNo,
+                                             Long sireId, String sireText) {
         return new CattleResponse(
                 before.cattleId(), before.farmId(), earTagNo, request.name(), before.sex(), before.breedId(),
                 request.birthDate(), before.sourceType(), before.entryDate(), before.lifecycleStage(),
                 before.presenceStatus(), before.healthStatus(), before.breedingStatus(), before.herdId(),
-                before.barnId(), request.remark(), before.createdAt(), before.version() + 1);
+                before.barnId(), sireId == null ? null : sireId.toString(), sireText, request.remark(),
+                before.createdAt(), before.version() + 1);
     }
 
     private CattleResponse withPresence(CattleResponse before, String presenceStatus) {
         return new CattleResponse(before.cattleId(), before.farmId(), before.earTagNo(), before.name(),
                 before.sex(), before.breedId(), before.birthDate(), before.sourceType(), before.entryDate(),
                 before.lifecycleStage(), presenceStatus, before.healthStatus(), before.breedingStatus(),
-                before.herdId(), before.barnId(), before.remark(), before.createdAt(), before.version() + 1);
+                before.herdId(), before.barnId(), before.sireId(), before.sireText(), before.remark(),
+                before.createdAt(), before.version() + 1);
     }
 
     private void createIdempotency(long farmId, long userId, String key, String path, long cattleId) {
@@ -392,6 +406,23 @@ public class CattleService {
             return id;
         } catch (NumberFormatException exception) {
             throw new DataConflictException(label + "编号格式错误");
+        }
+    }
+
+    private String normalizeSireText(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private void validateSire(long farmId, Long sireId, String sireText, Long cattleId) {
+        if (sireId != null && sireText != null) {
+            throw new DataConflictException("系统内父牛和外部父系只能填写一项");
+        }
+        if (sireId == null) return;
+        if (Objects.equals(sireId, cattleId)) {
+            throw new DataConflictException("父系不能选择牛只自身");
+        }
+        if (count("SELECT COUNT(*) FROM cattle WHERE farm_id=? AND cattle_id=? AND sex='MALE'", farmId, sireId) == 0) {
+            throw new DataConflictException("所选父系不存在、不是公牛或不属于当前牛场");
         }
     }
 

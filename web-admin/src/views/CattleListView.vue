@@ -11,6 +11,7 @@ import { Plus, Refresh, Search } from "@element-plus/icons-vue";
 import {
   archiveCattle,
   createCattle,
+  getAllCattle,
   getCattleDetail,
   getCattlePage,
   getCattleTimeline,
@@ -71,6 +72,7 @@ const qrUrl = ref("");
 const barns = ref<Barn[]>([]);
 const herds = ref<Herd[]>([]);
 const breeds = ref<DictionaryItem[]>([]);
+const bulls = ref<CattleRecord[]>([]);
 const detailLoading = ref(false);
 const detail = ref<CattleRecord | null>(null);
 const timeline = ref<CattleTimelineEvent[]>([]);
@@ -83,6 +85,8 @@ const detailAttachments = ref<AttachmentItem[]>([]);
 const detailPedigree = ref<CattlePedigree | null>(null);
 const attachmentUploading = ref(false);
 const records = ref<CattleRecord[]>([]);
+const sireMode = ref<"NONE" | "INTERNAL" | "EXTERNAL">("NONE");
+const editSireMode = ref<"NONE" | "INTERNAL" | "EXTERNAL">("NONE");
 const total = ref(0);
 const formRef = ref<FormInstance>();
 const editFormRef = ref<FormInstance>();
@@ -112,12 +116,16 @@ const form = reactive<CreateCattlePayload>({
   lifecycleStage: "GROWING",
   barnId: "",
   herdId: "",
+  sireId: "",
+  sireText: "",
   remark: "",
 });
 const editForm = reactive<UpdateCattlePayload>({
   earTagNo: "",
   name: "",
   birthDate: "",
+  sireId: "",
+  sireText: "",
   remark: "",
   changeReason: "",
   version: 0,
@@ -189,6 +197,18 @@ const availableHerds = () =>
   herds.value.filter((item) => item.barnId === transferForm.toBarnId);
 const createHerds = () =>
   herds.value.filter((item) => item.barnId === form.barnId);
+const selectableBulls = () =>
+  bulls.value.filter((item) => item.cattleId !== detail.value?.cattleId);
+
+function changeSireMode(mode: "NONE" | "INTERNAL" | "EXTERNAL") {
+  form.sireId = mode === "INTERNAL" ? form.sireId : "";
+  form.sireText = mode === "EXTERNAL" ? form.sireText : "";
+}
+
+function changeEditSireMode(mode: "NONE" | "INTERNAL" | "EXTERNAL") {
+  editForm.sireId = mode === "INTERNAL" ? editForm.sireId : "";
+  editForm.sireText = mode === "EXTERNAL" ? editForm.sireText : "";
+}
 
 async function load() {
   loading.value = true;
@@ -234,9 +254,10 @@ function reset() {
 }
 async function openCreate() {
   try {
-    [barns.value, herds.value] = await Promise.all([
+    [barns.value, herds.value, bulls.value] = await Promise.all([
       getBarns("ENABLED"),
       getHerds("ENABLED"),
+      getAllCattle({ sex: "MALE" }),
     ]);
   } catch {
     return ElMessage.error("栏舍与牛群加载失败");
@@ -252,8 +273,11 @@ async function openCreate() {
     lifecycleStage: "GROWING",
     barnId: "",
     herdId: "",
+    sireId: "",
+    sireText: "",
     remark: "",
   });
+  sireMode.value = "NONE";
   dialogVisible.value = true;
 }
 async function openDetail(row: CattleRecord) {
@@ -331,10 +355,17 @@ function openEdit() {
     earTagNo: detail.value.earTagNo,
     name: detail.value.name || "",
     birthDate: detail.value.birthDate || "",
+    sireId: detail.value.sireId || detailPedigree.value?.sireId || "",
+    sireText: detail.value.sireText || detailPedigree.value?.sireText || "",
     remark: detail.value.remark || "",
     changeReason: "",
     version: detail.value.version,
   });
+  editSireMode.value = editForm.sireId
+    ? "INTERNAL"
+    : editForm.sireText
+      ? "EXTERNAL"
+      : "NONE";
   editVisible.value = true;
 }
 async function saveEdit() {
@@ -351,7 +382,10 @@ async function saveEdit() {
       crypto.randomUUID(),
     );
     detail.value = updated;
-    timeline.value = await getCattleTimeline(updated.cattleId);
+    [timeline.value, detailPedigree.value] = await Promise.all([
+      getCattleTimeline(updated.cattleId),
+      getCattlePedigree(updated.cattleId),
+    ]);
     editVisible.value = false;
     ElMessage.success("牛只档案纠错成功，审计记录已保存");
     await load();
@@ -486,7 +520,12 @@ async function save() {
 
 onMounted(async () => {
   try {
-    [barns.value, herds.value, breeds.value] = await Promise.all([getBarns("ENABLED"), getHerds("ENABLED"), getDictionaryItems("CATTLE_BREED")]);
+    [barns.value, herds.value, breeds.value, bulls.value] = await Promise.all([
+      getBarns("ENABLED"),
+      getHerds("ENABLED"),
+      getDictionaryItems("CATTLE_BREED"),
+      getAllCattle({ sex: "MALE" }),
+    ]);
   } catch (error: any) {
     ElMessage.error(error.response?.data?.message || "筛选选项加载失败");
   }
@@ -697,6 +736,27 @@ onMounted(async () => {
             v-model="form.birthDate"
             type="date"
             value-format="YYYY-MM-DD"
+        /></el-form-item>
+        <el-form-item label="父系来源" class="form-wide"
+          ><el-segmented
+            v-model="sireMode"
+            :options="[
+              { label: '未记录', value: 'NONE' },
+              { label: '系统内公牛', value: 'INTERNAL' },
+              { label: '外部父系', value: 'EXTERNAL' },
+            ]"
+            @change="changeSireMode"
+        /></el-form-item>
+        <el-form-item v-if="sireMode === 'INTERNAL'" label="父牛" class="form-wide"
+          ><el-select v-model="form.sireId" filterable clearable placeholder="按耳号或名称选择公牛"
+            ><el-option
+              v-for="bull in bulls"
+              :key="bull.cattleId"
+              :label="`${bull.earTagNo}${bull.name ? ` · ${bull.name}` : ''}`"
+              :value="bull.cattleId" /></el-select
+        ></el-form-item>
+        <el-form-item v-else-if="sireMode === 'EXTERNAL'" label="外部父系" class="form-wide"
+          ><el-input v-model="form.sireText" maxlength="100" placeholder="填写父牛耳号、名称或冻精编号" show-word-limit
         /></el-form-item>
         <el-form-item label="备注" class="form-wide"
           ><el-input
@@ -944,6 +1004,8 @@ onMounted(async () => {
       v-model="editVisible"
       title="牛只档案纠错"
       width="min(560px, 92vw)"
+      top="5vh"
+      class="cattle-edit-dialog"
       append-to-body
     >
       <el-alert
@@ -970,6 +1032,27 @@ onMounted(async () => {
             v-model="editForm.birthDate"
             type="date"
             value-format="YYYY-MM-DD"
+        /></el-form-item>
+        <el-form-item label="父系来源"
+          ><el-segmented
+            v-model="editSireMode"
+            :options="[
+              { label: '未记录', value: 'NONE' },
+              { label: '系统内公牛', value: 'INTERNAL' },
+              { label: '外部父系', value: 'EXTERNAL' },
+            ]"
+            @change="changeEditSireMode"
+        /></el-form-item>
+        <el-form-item v-if="editSireMode === 'INTERNAL'" label="父牛"
+          ><el-select v-model="editForm.sireId" filterable clearable placeholder="按耳号或名称选择公牛"
+            ><el-option
+              v-for="bull in selectableBulls()"
+              :key="bull.cattleId"
+              :label="`${bull.earTagNo}${bull.name ? ` · ${bull.name}` : ''}`"
+              :value="bull.cattleId" /></el-select
+        ></el-form-item>
+        <el-form-item v-else-if="editSireMode === 'EXTERNAL'" label="外部父系"
+          ><el-input v-model="editForm.sireText" maxlength="100" placeholder="填写父牛耳号、名称或冻精编号" show-word-limit
         /></el-form-item>
         <el-form-item label="备注"
           ><el-input

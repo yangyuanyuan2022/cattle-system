@@ -21,6 +21,8 @@ public record CattleResponse(
         String breedingStatus,
         String herdId,
         String barnId,
+        String sireId,
+        String sireText,
         String remark,
         LocalDateTime createdAt,
         int version
@@ -30,7 +32,8 @@ public record CattleResponse(
                 entity.getName(), entity.getSex(), string(entity.getBreedId()), entity.getBirthDate(),
                 entity.getSourceType(), entity.getEntryDate(), entity.getLifecycleStage(),
                 entity.getPresenceStatus(), entity.getHealthStatus(), entity.getBreedingStatus(),
-                string(entity.getHerdId()), string(entity.getBarnId()), entity.getRemark(),
+                string(entity.getHerdId()), string(entity.getBarnId()), string(entity.getSireId()),
+                entity.getSireText(), entity.getRemark(),
                 entity.getCreatedAt(), entity.getVersion() == null ? 0 : entity.getVersion());
     }
 
