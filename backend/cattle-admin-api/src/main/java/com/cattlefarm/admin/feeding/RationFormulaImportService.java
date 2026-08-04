@@ -54,13 +54,13 @@ public class RationFormulaImportService {
         idem(farm, user, key, formulaId);
         jdbc.update("INSERT INTO ration_formula(formula_id,farm_id,formula_name,version_no,target_type,target_object_id,daily_intake_kg,source_file,remark,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 formulaId, farm, name, version, target, targetId, parsed.total(), safeName(file.getOriginalFilename()), remark, user, user);
-        int sort = 0;
+        List<FeedingDtos.FormulaItem> items = new ArrayList<>();
         for (ImportedLine line : parsed.lines()) {
             long ingredientId = findOrCreateIngredient(farm, user, line);
             BigDecimal ratio = line.amount().multiply(BigDecimal.valueOf(100)).divide(parsed.total(), 4, RoundingMode.HALF_UP);
-            jdbc.update("INSERT INTO ration_formula_item(item_id,farm_id,formula_id,ingredient_id,ratio_pct,daily_amount_kg,sort_no) VALUES(?,?,?,?,?,?,?)",
-                    IdWorker.getId(), farm, formulaId, ingredientId, ratio, line.amount(), sort++);
+            items.add(new FeedingDtos.FormulaItem(Long.toString(ingredientId), ratio, line.amount()));
         }
+        feeding.replaceFormulaItems(formulaId, items);
         jdbc.update("INSERT INTO operation_log(operation_log_id,farm_id,user_id,module_code,action_type,business_type,business_id,reason) VALUES(?,?,?,'FEEDING','FORMULA_IMPORTED','RATION_FORMULA',?,?)",
                 IdWorker.getId(), farm, user, formulaId, "从葵花日粮计算表导入 " + parsed.lines().size() + " 种原料");
         return feeding.formulaDetail(formulaId);

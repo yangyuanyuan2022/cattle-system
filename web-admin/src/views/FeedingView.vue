@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage, ElMessageBox, type UploadFile } from "element-plus";
-import { InfoFilled, MagicStick, Plus, Upload } from "@element-plus/icons-vue";
+import { InfoFilled, MagicStick, Plus, Search, Upload } from "@element-plus/icons-vue";
 import { getHerds, type Herd } from "../api/location";
 import { getUsers, type UserItem } from "../api/user";
 import {
@@ -13,15 +13,18 @@ import {
   confirmOrder,
   createFormula,
   createIngredient,
-  deleteExecution,
+  voidExecution,
   deleteIngredient,
   deleteFormula,
   deleteOrder,
   executeOrder,
   getExecutions,
+  getExecutionPage,
   getFormulas,
   getIngredients,
+  getIngredientPage,
   getOrders,
+  getOrderPage,
   importFormula,
   optimizeConcentrate,
   recommendBreedingNutrition,
@@ -61,10 +64,23 @@ const tab = ref(
   selectedOrder = ref<MixingOrder | null>(null);
 const recommendation = ref<FormulaRecommendation | null>(null);
 const concentrateIngredientSearch = ref("");
+const concentrateRatioMode = ref<"MANUAL" | "AUTO">("MANUAL");
 const micronutrientRecommendation = ref<MicronutrientRecommendation | null>(null);
 const breedingRecommendation = ref<BreedingNutritionRecommendation | null>(null);
 const ingredientSearch = ref("");
 const ingredientTypeFilter = ref("");
+const formulaSearch = ref("");
+const formulaStatusFilter = ref("");
+const ingredientPage = ref(1);
+const ingredientPageSize = ref(50);
+const ingredientTotal = ref(0);
+const ingredientTypeCounts = ref<Record<string, number>>({});
+const orderPage = ref(1);
+const orderPageSize = ref(50);
+const orderTotal = ref(0);
+const executionPage = ref(1);
+const executionPageSize = ref(50);
+const executionTotal = ref(0);
 const recommendationIngredientSearch = ref("");
 const ingredient = reactive({
     ingredientName: "",
@@ -141,6 +157,7 @@ const micronutrientInput = reactive({
   productionStage: "GROWING",
   dryMatterIntakeKg: 8.6,
   cattleCount: 100,
+  formulaId: "",
 });
 const breedingInput = reactive({
   productionStage: "LATE_PREGNANCY",
@@ -157,6 +174,7 @@ const ingredientTypeLabels: Record<string, string> = {
   WATER: "水（手动添加）",
   OTHER: "待分类（手动添加）",
 };
+const ingredientTypeOptions = Object.entries(ingredientTypeLabels).map(([type, label]) => ({ type, label }));
 const automaticIngredientGroups = computed(() =>
   ["ROUGHAGE", "ENERGY", "PROTEIN"].map((type) => ({
     type,
@@ -181,8 +199,17 @@ const selectedRecommendationIngredients = computed(() =>
 const isConcentrateFormula = (value: Formula) => value.items.length > 0 && value.items.every((line) =>
   ingredients.value.find((item) => item.ingredientId === line.ingredientId)?.ingredientType !== "ROUGHAGE",
 );
-const concentrateFormulas = computed(() => formulas.value.filter(isConcentrateFormula));
+const concentrateFormulas = computed(() => formulas.value.filter((value) => isConcentrateFormula(value)));
+const activeConcentrateFormulas = computed(() => concentrateFormulas.value.filter((value) => value.status === "ACTIVE"));
 const dailyRationFormulas = computed(() => formulas.value.filter((value) => !isConcentrateFormula(value)));
+const displayedFormulas = computed(() => {
+  const source = tab.value === "concentrates" ? concentrateFormulas.value : dailyRationFormulas.value;
+  const keyword = formulaSearch.value.trim().toLowerCase();
+  return source.filter((item) =>
+    (!formulaStatusFilter.value || item.status === formulaStatusFilter.value) &&
+    (!keyword || item.formulaName.toLowerCase().includes(keyword)),
+  );
+});
 const concentrateIngredients = computed(() => {
   const keyword = concentrateIngredientSearch.value.trim().toLowerCase();
   return ingredients.value.filter((item) => item.status === "ENABLED" && item.ingredientType !== "ROUGHAGE" && item.ingredientType !== "WATER" && (!keyword || item.ingredientName.toLowerCase().includes(keyword)));
@@ -190,6 +217,15 @@ const concentrateIngredients = computed(() => {
 const selectedConcentrateIngredients = computed(() => concentrateInput.ingredientIds
   .map((id) => ingredients.value.find((item) => item.ingredientId === id))
   .filter((item): item is Ingredient => Boolean(item)));
+watch(() => concentrateInput.ingredientIds.slice(), (ids) => {
+  const selected = new Set(ids);
+  ids.forEach((id) => {
+    if (concentrateInput.ratios[id] == null) concentrateInput.ratios[id] = 0;
+  });
+  Object.keys(concentrateInput.ratios).forEach((id) => {
+    if (!selected.has(id)) delete concentrateInput.ratios[id];
+  });
+});
 const concentrateRatioTotal = computed(() => selectedConcentrateIngredients.value.reduce((sum, item) => sum + Number(concentrateInput.ratios[item.ingredientId] || 0), 0));
 const nutrientValue = (item: Ingredient, key: keyof Ingredient) => {
   const value = item[key];
@@ -250,7 +286,8 @@ async function optimizeSelectedConcentrate() {
       maximumStarchPct: concentrateInput.maximumStarchPct,
     });
     result.ratios.forEach((item) => concentrateInput.ratios[item.ingredientId] = item.dryMatterRatioPct);
-    ElMessage.success(`已按营养目标自动配比，预计 ¥${result.estimatedUnitPrice}/kg`);
+    concentrateRatioMode.value = "MANUAL";
+    ElMessage.success(`已生成初始比例，可继续手动调整，预计 ¥${result.estimatedUnitPrice}/kg`);
   } catch (e: any) { ElMessage.error(e.response?.data?.message || "自动配比失败"); }
   finally { saving.value = false; }
 }
@@ -267,18 +304,11 @@ function removeRecommendationIngredient(id: string) {
   recommendationInput.ingredientIds = recommendationInput.ingredientIds.filter((item) => item !== id);
   delete recommendationInput.ingredientRatios[id];
 }
-const filteredIngredients = computed(() => {
-  const keyword = ingredientSearch.value.trim().toLowerCase();
-  return ingredients.value.filter((item) =>
-    (!ingredientTypeFilter.value || item.ingredientType === ingredientTypeFilter.value) &&
-    (!keyword || item.ingredientName.toLowerCase().includes(keyword)),
-  );
-});
-const ingredientStats = computed(() => ["ROUGHAGE", "ENERGY", "PROTEIN", "MINERAL", "ADDITIVE", "WATER"].map((type) => ({
-  type,
-  label: ingredientTypeLabels[type],
-  count: ingredients.value.filter((item) => item.ingredientType === type).length,
-})).filter((item) => item.count));
+const filteredIngredients = computed(() => ingredients.value);
+const ingredientStats = computed(() => ingredientTypeOptions.map(({ type, label }) => ({
+  type, label,
+  count: Number(ingredientTypeCounts.value[type] || 0),
+})));
 const activeFormulas = computed(() =>
     dailyRationFormulas.value.filter((x) => x.status === "ACTIVE"),
   ),
@@ -288,29 +318,25 @@ const activeFormulas = computed(() =>
 async function load() {
   loading.value = true;
   try {
+    const ingredientTab = !isWorker && tab.value === "ingredients";
+    const ingredientCatalog = !isWorker && ["concentrates", "formulas", "micronutrients"].includes(String(tab.value));
     const values = await Promise.all([
-      isWorker ? Promise.resolve([]) : getIngredients(),
-      getFormulas(),
-      getOrders(),
-      getExecutions(),
-      getHerds("ENABLED"),
-      canManage ? getUsers() : Promise.resolve([]),
+      ingredientTab ? getIngredientPage(ingredientPage.value, ingredientPageSize.value, ingredientSearch.value, ingredientTypeFilter.value) : ingredientCatalog ? getIngredients() : Promise.resolve(null),
+      ["concentrates", "formulas", "micronutrients", "orders"].includes(String(tab.value)) ? getFormulas() : Promise.resolve([]),
+      tab.value === "orders" ? getOrderPage(orderPage.value, orderPageSize.value) : Promise.resolve(null),
+      tab.value === "executions" ? getExecutionPage(executionPage.value, executionPageSize.value) : Promise.resolve(null),
+      ["formulas", "orders", "breeding"].includes(String(tab.value)) ? getHerds("ENABLED") : Promise.resolve([]),
+      canManage && ["ingredients", "orders", "executions"].includes(String(tab.value)) ? getUsers() : Promise.resolve([]),
     ]);
-    [
-      ingredients.value,
-      formulas.value,
-      orders.value,
-      executions.value,
-      herds.value,
-      users.value,
-    ] = values as [
-      Ingredient[],
-      Formula[],
-      MixingOrder[],
-      MixingExecution[],
-      Herd[],
-      UserItem[],
-    ];
+    const [ingredientResult, formulaResult, orderResult, executionResult, herdResult, userResult] = values as any[];
+    if (ingredientResult) {
+      if (ingredientTab) { ingredients.value = ingredientResult.items; ingredientTotal.value = ingredientResult.total; ingredientTypeCounts.value = ingredientResult.typeCounts || {}; }
+      else ingredients.value = ingredientResult;
+    }
+    if (formulaResult) formulas.value = formulaResult;
+    if (orderResult) { orders.value = orderResult.items; orderTotal.value = orderResult.total; }
+    if (executionResult) { executions.value = executionResult.items; executionTotal.value = executionResult.total; }
+    herds.value = herdResult; users.value = userResult;
   } catch (e: any) {
     ElMessage.error(e.response?.data?.message || "配料数据加载失败");
   } finally {
@@ -387,7 +413,7 @@ function openRecommendation() {
     currentWeightKg: 400,
     targetWeightKg: 600,
     targetDailyGainKg: 1.1,
-    concentrateFormulaId: concentrateFormulas.value.find((item) => item.status === "ACTIVE")?.formulaId || concentrateFormulas.value[0]?.formulaId || "",
+    concentrateFormulaId: activeConcentrateFormulas.value[0]?.formulaId || "",
     roughageDryMatterPct: 55,
     ingredientIds: [],
     ingredientRatios: {},
@@ -399,6 +425,7 @@ function openRecommendation() {
 function openConcentrateBuilder() {
   Object.assign(concentrateInput, { formulaName: "", ingredientIds: [], ratios: {}, targetCrudeProteinPct: 18, minimumMetabolizableEnergy: 2.8, maximumNdfPct: 25, maximumCrudeFatPct: 7, minimumStarchPct: 25, maximumStarchPct: 65 });
   concentrateIngredientSearch.value = "";
+  concentrateRatioMode.value = "MANUAL";
   dialog.value = "concentrate";
 }
 async function saveConcentrate() {
@@ -423,7 +450,7 @@ async function saveConcentrate() {
 async function generateRecommendation() {
   if (recommendationInput.targetWeightKg <= recommendationInput.currentWeightKg)
     return ElMessage.warning("目标体重必须大于当前体重");
-  const concentrate = concentrateFormulas.value.find((item) => item.formulaId === recommendationInput.concentrateFormulaId);
+  const concentrate = activeConcentrateFormulas.value.find((item) => item.formulaId === recommendationInput.concentrateFormulaId);
   if (!concentrate) return ElMessage.warning("请先选择一款精料");
   if (!recommendationInput.ingredientIds.length) return ElMessage.warning("至少选择一种粗料");
   if (Math.abs(recommendationRatioTotal.value - 100) > 0.01) return ElMessage.warning(`粗料内部配比合计必须为 100%，当前为 ${recommendationRatioTotal.value.toFixed(2)}%`);
@@ -545,12 +572,17 @@ async function save() {
   try {
     if (dialog.value === "ingredient") {
       if (!ingredient.ingredientName) throw new Error("请填写原料名称");
-      editingIngredient.value
-        ? await updateIngredient(editingIngredient.value.ingredientId, {
+      if (editingIngredient.value) {
+        await updateIngredient(editingIngredient.value.ingredientId, {
             ...ingredient,
             version: editingIngredient.value.version,
-          })
-        : await createIngredient(ingredient);
+          });
+      } else {
+        const created = await createIngredient(ingredient);
+        ingredientSearch.value = created.ingredientName;
+        ingredientTypeFilter.value = "";
+        ingredientPage.value = 1;
+      }
     } else if (dialog.value === "formula") {
       if (!formula.formulaName || !formula.items.length)
         throw new Error("请填写配方名称和明细");
@@ -630,11 +662,17 @@ async function removeOrder(row: MixingOrder) {
   } catch { return; }
   await act(() => deleteOrder(row.orderId), "配料单已删除");
 }
-async function removeExecution(row: MixingExecution) {
+async function voidExecutionRecord(row: MixingExecution) {
+  if (row.status === "VOIDED") return;
   try {
-    await ElMessageBox.confirm("删除执行记录后，对应配料单将回退到已确认状态，并重新开放登记执行。确定继续吗？", "删除执行记录", { type: "warning", confirmButtonText: "删除并回退", cancelButtonText: "取消", confirmButtonClass: "el-button--danger" });
+    const { value } = await ElMessageBox.prompt("作废后会保留原实投数据，并将配料单回退为已确认。请输入作废原因。", "作废执行记录", { type: "warning", inputPattern: /\S+/, inputErrorMessage: "作废原因不能为空", confirmButtonText: "作废", cancelButtonText: "取消", confirmButtonClass: "el-button--danger" });
+    await voidExecution(row.executionId, value, row.orderVersion);
   } catch { return; }
-  await act(() => deleteExecution(row.executionId), "执行记录已删除，配料单已回退为已确认");
+  ElMessage.success("执行记录已作废，原始数据仍保留");
+  await load();
+}
+async function removeExecution(row: MixingExecution) {
+  return voidExecutionRecord(row);
 }
 function orderStatusLabel(status: string) {
   return { PENDING_CONFIRM: "待确认", CONFIRMED: "已确认", EXECUTED: "已执行", CANCELLED: "已取消" }[status] || status;
@@ -656,6 +694,13 @@ async function uploadFormula(file: UploadFile) {
     saving.value = false;
   }
 }
+let ingredientFilterTimer: ReturnType<typeof setTimeout> | undefined;
+watch([ingredientSearch, ingredientTypeFilter], () => {
+  ingredientPage.value = 1;
+  if (ingredientFilterTimer) clearTimeout(ingredientFilterTimer);
+  if (tab.value === "ingredients") ingredientFilterTimer = setTimeout(load, 250);
+});
+watch(tab, load);
 onMounted(load);
 </script>
 <template>
@@ -729,9 +774,9 @@ onMounted(load);
       <div class="ingredient-tools">
         <el-input v-model="ingredientSearch" clearable placeholder="搜索原料名称" />
         <el-select v-model="ingredientTypeFilter" clearable placeholder="全部类型">
-          <el-option v-for="item in ingredientStats" :key="item.type" :label="item.label" :value="item.type" />
+          <el-option v-for="item in ingredientTypeOptions" :key="item.type" :label="item.label" :value="item.type" />
         </el-select>
-        <span>共 {{ filteredIngredients.length }} 种</span>
+        <span>当前页 {{ filteredIngredients.length }} 种 / 共 {{ ingredientTotal }} 种</span>
       </div>
       <el-table v-loading="loading" :data="filteredIngredients"
         ><el-table-column
@@ -764,11 +809,20 @@ onMounted(load);
               >编辑</el-button><el-button link type="danger" @click="removeIngredient(s.row)">删除</el-button
             ></template
           ></el-table-column
-        ></el-table
-      >
+        ></el-table>
+      <el-pagination v-model:current-page="ingredientPage" v-model:page-size="ingredientPageSize" :page-sizes="[25,50,100]" layout="total, sizes, prev, pager, next" :total="ingredientTotal" @current-change="load" @size-change="load" />
     </section>
       <section v-if="['formulas', 'concentrates'].includes(tab)" class="cards">
-      <article v-for="f in (tab === 'concentrates' ? concentrateFormulas : dailyRationFormulas)" :key="f.formulaId">
+      <div class="formula-filters">
+        <el-input v-model="formulaSearch" clearable :prefix-icon="Search" placeholder="搜索配方名称" />
+        <el-select v-model="formulaStatusFilter" clearable placeholder="全部状态">
+          <el-option label="草稿" value="DRAFT" />
+          <el-option label="已启用" value="ACTIVE" />
+          <el-option label="已停用" value="ARCHIVED" />
+        </el-select>
+      </div>
+      <el-empty v-if="!displayedFormulas.length" description="暂无符合条件的配方" />
+      <article v-for="f in displayedFormulas" :key="f.formulaId">
         <header>
           <strong>{{ f.formulaName }} V{{ f.versionNo }}</strong
           ><el-tag :type="f.status === 'ACTIVE' ? 'success' : f.status === 'ARCHIVED' ? 'warning' : 'info'">{{
@@ -776,6 +830,17 @@ onMounted(load);
           }}</el-tag>
         </header>
         <div class="metrics">
+          <template v-if="tab !== 'concentrates' && f.nutrition">
+            <span>TDN<b>{{ f.nutrition.tdnPct ?? '-' }}%</b></span>
+            <span>代谢能<b>{{ f.nutrition.metabolizableEnergyValue ?? '-' }} Mcal/kgDM</b></span>
+            <span>维持净能<b>{{ f.nutrition.energyValue ?? '-' }} Mcal/kgDM</b></span>
+            <span>增重净能<b>{{ f.nutrition.gainEnergyValue ?? '-' }} Mcal/kgDM</b></span>
+            <span>ADF<b>{{ f.nutrition.adfPct ?? '-' }}%</b></span>
+            <span>粗灰分<b>{{ f.nutrition.ashPct ?? '-' }}%</b></span>
+            <span>粗脂肪<b>{{ f.nutrition.crudeFatPct ?? '-' }}%</b></span>
+            <span>钙 / 磷<b>{{ f.nutrition.calciumPct ?? '-' }}% / {{ f.nutrition.phosphorusPct ?? '-' }}%</b></span>
+            <span>干物质单价<b>¥{{ f.nutrition.dryMatterUnitPrice ?? '-' }}/kgDM</b></span>
+          </template>
           <span
             >{{ tab === 'concentrates' ? '每公斤干物质' : '干物质' }}<b>{{ f.dryMatterKg }} kg</b></span
           ><span
@@ -823,6 +888,7 @@ onMounted(load);
             <span>按干物质采食量计算每头及整群目标摄入量</span>
           </div>
           <el-form label-position="top" class="micro-form">
+            <el-form-item label="已保存日粮"><el-select v-model="micronutrientInput.formulaId" clearable filterable placeholder="可选：计算实际供给与缺口"><el-option v-for="f in activeFormulas" :key="f.formulaId" :label="`${f.formulaName} V${f.versionNo}`" :value="f.formulaId" /></el-select></el-form-item>
             <el-form-item label="生产阶段">
               <el-segmented v-model="micronutrientInput.productionStage" :options="[{ label: '生长育肥', value: 'GROWING' }, { label: '母牛妊娠', value: 'PREGNANT' }, { label: '母牛哺乳前期', value: 'LACTATING' }]" />
             </el-form-item>
@@ -838,6 +904,7 @@ onMounted(load);
             <span>营养指标<b>{{ micronutrientRecommendation.items.length }} 项</b></span>
           </div>
           <el-table :data="micronutrientRecommendation.items" stripe>
+            <el-table-column label="实际供给 / 缺口" width="190"><template #default="s"><span v-if="s.row.actualDailyPerHead == null" class="muted">数据不足</span><span v-else><b>{{ s.row.actualDailyPerHead }}</b> {{ s.row.intakeUnit }}<small class="supply-gap">距最低目标 {{ s.row.gapToMinPerHead ?? 0 }}</small></span></template></el-table-column>
             <el-table-column prop="category" label="类别" width="100" />
             <el-table-column prop="nutrientName" label="营养素" width="110" />
             <el-table-column label="目标浓度" width="150"><template #default="s">{{ amountRange(s.row.targetMin, s.row.targetMax) }} {{ s.row.concentrationUnit }}</template></el-table-column>
@@ -951,6 +1018,7 @@ onMounted(load);
           ></el-table-column
         ></el-table
       >
+      <el-pagination v-model:current-page="orderPage" v-model:page-size="orderPageSize" :page-sizes="[25,50,100]" layout="total, sizes, prev, pager, next" :total="orderTotal" @current-change="load" @size-change="load" />
     </section>
     <section v-if="tab === 'executions'" class="table-panel">
       <el-table v-loading="loading" :data="executions" empty-text="暂无执行记录"
@@ -969,9 +1037,10 @@ onMounted(load);
         /><el-table-column prop="deviationNote" label="偏差说明" min-width="180"
           ><template #default="s">{{
             s.row.deviationNote || "-"
-          }}</template></el-table-column><el-table-column v-if="canManage" label="操作" width="90"><template #default="s"><el-button link type="danger" @click="removeExecution(s.row)">删除</el-button></template></el-table-column
+          }}</template></el-table-column><el-table-column label="状态" width="100"><template #default="s"><el-tag :type="s.row.status === 'VOIDED' ? 'info' : 'success'">{{ s.row.status === 'VOIDED' ? '已作废' : '已执行' }}</el-tag></template></el-table-column><el-table-column v-if="canManage" label="操作" width="90"><template #default="s"><el-button v-if="s.row.status === 'EXECUTED'" link type="danger" @click="voidExecutionRecord(s.row)">作废</el-button><span v-else class="muted">-</span></template></el-table-column
         ></el-table
       >
+      <el-pagination v-model:current-page="executionPage" v-model:page-size="executionPageSize" :page-sizes="[25,50,100]" layout="total, sizes, prev, pager, next" :total="executionTotal" @current-change="load" @size-change="load" />
     </section>
     <el-dialog
       v-model="dialog"
@@ -1062,18 +1131,23 @@ onMounted(load);
               <el-checkbox v-for="item in concentrateIngredients" :key="item.ingredientId" :value="item.ingredientId">{{ item.ingredientName }}<small>{{ ingredientTypeLabels[item.ingredientType] }}</small></el-checkbox>
             </el-checkbox-group>
           </el-form-item>
-          <div v-if="selectedConcentrateIngredients.length" class="concentrate-targets">
+          <div v-if="selectedConcentrateIngredients.length" class="concentrate-ratio-mode">
+            <el-segmented v-model="concentrateRatioMode" :options="[{ label: '手动调整', value: 'MANUAL' }, { label: '自动配比', value: 'AUTO' }]" />
+            <div :class="{ invalid: Math.abs(concentrateRatioTotal - 100) > 0.01 }"><span>当前合计</span><b>{{ concentrateRatioTotal.toFixed(2) }}%</b></div>
+          </div>
+          <div v-if="selectedConcentrateIngredients.length && concentrateRatioMode === 'AUTO'" class="concentrate-targets">
             <el-form-item label="目标粗蛋白 ≥ %DM"><el-input-number v-model="concentrateInput.targetCrudeProteinPct" :min="8" :max="40" :precision="1" /></el-form-item>
             <el-form-item label="代谢能 ≥ Mcal/kgDM"><el-input-number v-model="concentrateInput.minimumMetabolizableEnergy" :min="1" :max="5" :precision="2" /></el-form-item>
             <el-form-item label="NDF ≤ %DM"><el-input-number v-model="concentrateInput.maximumNdfPct" :min="0" :max="80" :precision="1" /></el-form-item>
             <el-form-item label="粗脂肪 ≤ %DM"><el-input-number v-model="concentrateInput.maximumCrudeFatPct" :min="0" :max="20" :precision="1" /></el-form-item>
             <el-form-item label="淀粉下限 %DM"><el-input-number v-model="concentrateInput.minimumStarchPct" :min="0" :max="80" :precision="1" /></el-form-item>
             <el-form-item label="淀粉上限 %DM"><el-input-number v-model="concentrateInput.maximumStarchPct" :min="0" :max="90" :precision="1" /></el-form-item>
+            <div class="concentrate-auto-action"><el-button type="primary" :loading="saving" :icon="MagicStick" @click="optimizeSelectedConcentrate">生成自动配比</el-button></div>
           </div>
         </el-form>
-        <div v-if="selectedConcentrateIngredients.length" class="ratio-editor">
-          <div class="ratio-editor-head"><div><strong>精料原料配比</strong><span>系统按营养约束和价格优化，生成后可人工微调</span></div><div :class="{ invalid: Math.abs(concentrateRatioTotal - 100) > 0.01 }"><span>当前合计</span><b>{{ concentrateRatioTotal.toFixed(2) }}%</b></div><el-button type="primary" :loading="saving" :icon="MagicStick" @click="optimizeSelectedConcentrate">按营养目标自动配比</el-button></div>
-          <div class="ratio-editor-grid"><label v-for="item in selectedConcentrateIngredients" :key="item.ingredientId"><span>{{ item.ingredientName }}<small>{{ ingredientTypeLabels[item.ingredientType] }}</small></span><el-input-number v-model="concentrateInput.ratios[item.ingredientId]" :min="0" :max="100" :precision="2" /><em>%</em></label></div>
+        <div v-if="selectedConcentrateIngredients.length && concentrateRatioMode === 'MANUAL'" class="ratio-editor">
+          <div class="ratio-editor-head manual"><div><strong>手动调整精料比例</strong><span>直接修改每种原料的成品重量占比</span></div></div>
+          <div class="ratio-editor-grid"><label v-for="item in selectedConcentrateIngredients" :key="item.ingredientId"><span>{{ item.ingredientName }}<small>{{ ingredientTypeLabels[item.ingredientType] }}</small></span><el-input-number class="concentrate-ratio-input" v-model="concentrateInput.ratios[item.ingredientId]" :min="0" :max="100" :precision="2" :step="1" /><em>%</em></label></div>
         </div>
         <div v-if="selectedConcentrateIngredients.length" class="recommend-metrics concentrate-summary">
           <span>每公斤精料价格<b>¥{{ concentrateSummary.price }}/kg</b></span><span>干物质<b>{{ concentrateSummary.dryMatterPct ?? '-' }}%</b></span><span>粗蛋白<b>{{ concentrateSummary.crudeProteinPct ?? '-' }}%</b></span>
@@ -1095,7 +1169,7 @@ onMounted(load);
           <el-form-item label="当前平均体重（kg）" required><el-input-number v-model="recommendationInput.currentWeightKg" :min="80" :max="1200" /></el-form-item>
           <el-form-item label="目标体重（kg）" required><el-input-number v-model="recommendationInput.targetWeightKg" :min="100" :max="1500" /></el-form-item>
           <el-form-item label="目标日增重（kg/天）" required><el-input-number v-model="recommendationInput.targetDailyGainKg" :min="0.2" :max="2" :step="0.1" :precision="2" /></el-form-item>
-          <el-form-item label="选择精料" required><el-select v-model="recommendationInput.concentrateFormulaId" filterable placeholder="请先在精料配方中生成并保存"><el-option v-for="item in concentrateFormulas" :key="item.formulaId" :label="`${item.formulaName}（¥${item.dailyCost}/kg）`" :value="item.formulaId" /></el-select></el-form-item>
+           <el-form-item label="选择精料" required><el-select v-model="recommendationInput.concentrateFormulaId" filterable placeholder="请先生成并启用一款精料"><el-option v-for="item in activeConcentrateFormulas" :key="item.formulaId" :label="`${item.formulaName}（¥${item.dailyCost ?? '-'}/kg，已启用）`" :value="item.formulaId" /></el-select><small class="field-hint">正式日粮只允许使用已启用精料，草稿和停用配方不能投产</small></el-form-item>
           <el-form-item label="粗料干物质占比（%）" required><el-input-number v-model="recommendationInput.roughageDryMatterPct" :min="recommendationInput.productionStage === 'GROWING' ? 45 : 10" :max="95" /><small class="field-hint">精料占 {{ 100 - recommendationInput.roughageDryMatterPct }}% DM · GB/T {{ recommendationInput.productionStage === 'GROWING' ? '生长牛粗料 45%-95%' : '肥育牛粗料不低于 10%' }}</small></el-form-item>
           <el-form-item label="选择粗料" required>
             <el-popover placement="bottom-start" :width="520" trigger="click" popper-class="ingredient-picker-popover">
@@ -1147,7 +1221,7 @@ onMounted(load);
         <template v-if="recommendation">
           <div class="recommend-metrics">
             <span>目标日增重<b>{{ recommendation.averageDailyGainKg }} kg</b></span>
-            <span>日采食量<b>{{ recommendation.dailyIntakeKg }} kg</b></span>
+            <span>鲜料总量<b>{{ recommendation.dailyIntakeKg }} kg/头/日</b><small>DMI {{ recommendation.dryMatterTargetKg }} kg/头/日</small></span>
             <span>粗蛋白<b>{{ recommendation.estimatedCrudeProteinPct }}%</b></span>
             <span>NDF<b>{{ recommendation.estimatedNdfPct }}%</b></span>
             <span>TDN<b>{{ recommendation.estimatedTdnPct }}%</b></span>
@@ -1320,6 +1394,7 @@ onMounted(load);
   grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
   gap: 14px;
 }
+:deep(.el-dialog__body) { max-height: min(72vh, 760px); overflow-y: auto; }
 .cards article {
   background: #fff;
   border: 1px solid #dde3df;
@@ -1388,8 +1463,14 @@ onMounted(load);
 .concentrate-picker .el-checkbox { margin-right: 0; min-width: 0; }
 .concentrate-picker small { display: block; color: #84908b; font-size: 11px; }
 .concentrate-targets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 12px; padding: 12px; border: 1px solid #e2e7e4; background: #f7faf8; }
+.concentrate-ratio-mode { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.concentrate-ratio-mode > div:last-child { display: flex; align-items: baseline; gap: 6px; color: #66736d; }
+.concentrate-ratio-mode b { color: #2f765a; font-size: 18px; }
+.concentrate-ratio-mode .invalid b { color: #c45656; }
+.concentrate-auto-action { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
 .ratio-editor { margin: 0 0 16px; border: 1px solid #dfe5e2; padding: 14px; }
 .ratio-editor-head { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: center; margin-bottom: 12px; }
+.ratio-editor-head.manual { grid-template-columns: 1fr; }
 .ratio-editor-head > div:first-child span { display: block; margin-top: 3px; color: #75817d; font-size: 12px; }
 .ratio-editor-head > div:nth-child(2) { display: flex; align-items: baseline; gap: 6px; color: #66736d; }
 .ratio-editor-head > div:nth-child(2) b { color: #2f765a; font-size: 18px; }
@@ -1410,7 +1491,11 @@ onMounted(load);
 .daily-supply span, .daily-supply small { display: block; color: #75817d; }
 .daily-supply b { display: block; margin: 5px 0 3px; color: #26332e; }
 .recommend-warning { margin-top: 10px; }
-.ingredient-summary { display: grid; grid-template-columns: repeat(6, minmax(105px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.supply-gap { display: block; color: #b36b00; margin-top: 2px; }
+.muted { color: #89938f; }
+.formula-filters { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(220px, 360px) 160px; gap: 10px; align-items: center; }
+.formula-filters .el-input, .formula-filters .el-select { width: 100%; }
+.ingredient-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 8px; margin-bottom: 14px; }
 .ingredient-summary button { border: 1px solid #dfe5e2; background: #fff; padding: 10px 12px; text-align: left; cursor: pointer; }
 .ingredient-summary button:hover, .ingredient-summary button.active { border-color: #3f7a63; background: #f2f7f4; }
 .ingredient-summary span { display: block; color: #75817d; font-size: 12px; }
@@ -1450,11 +1535,15 @@ onMounted(load);
   .daily-supply > div:nth-child(2) { border-right: 0; }
   .ingredient-summary { grid-template-columns: repeat(2, 1fr); }
   .ingredient-tools { grid-template-columns: 1fr; }
+  .formula-filters { grid-template-columns: 1fr; }
+  :deep(.el-pagination) { height: auto; justify-content: flex-start; flex-wrap: wrap; row-gap: 6px; }
   .nutrient-checks > div:nth-child(odd) { border-right: 0; }
   .micro-inputs, .micro-form, .breeding-form { grid-template-columns: 1fr; }
   .micro-summary { grid-template-columns: 1fr; }
   .breeding-concentrations { grid-template-columns: 1fr 1fr; }
   .ratio-editor-head, .ratio-editor-grid { grid-template-columns: 1fr; }
+  .concentrate-ratio-mode { align-items: stretch; flex-direction: column; }
+  .concentrate-ratio-mode > div:last-child { justify-content: space-between; }
   .concentrate-targets { grid-template-columns: 1fr 1fr; }
 }
 </style>

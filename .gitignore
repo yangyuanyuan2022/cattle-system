@@ -6,6 +6,7 @@
 # Java
 **/target/
 *.log
+/logs/
 backend/cattle-admin-api/logs/
 
 # Node

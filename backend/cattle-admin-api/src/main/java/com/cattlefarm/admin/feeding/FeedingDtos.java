@@ -1,5 +1,5 @@
 package com.cattlefarm.admin.feeding;
-import jakarta.validation.Valid;import jakarta.validation.constraints.*;import java.math.BigDecimal;import java.time.*;import java.util.List;
+import jakarta.validation.Valid;import jakarta.validation.constraints.*;import java.math.BigDecimal;import java.time.*;import java.util.List;import java.util.Map;
 public final class FeedingDtos{
  private FeedingDtos(){}
  public record Ingredient(String ingredientId,String ingredientName,String ingredientType,BigDecimal dryMatterPct,BigDecimal tdnPct,BigDecimal metabolizableEnergyValue,BigDecimal crudeProteinPct,BigDecimal starchPct,BigDecimal energyValue,BigDecimal gainEnergyValue,BigDecimal ndfPct,BigDecimal peNdfPct,BigDecimal adfPct,BigDecimal ashPct,BigDecimal crudeFatPct,BigDecimal calciumPct,BigDecimal phosphorusPct,BigDecimal rdpPct,BigDecimal unitPrice,String status,String remark,int version){}
@@ -7,7 +7,8 @@ public final class FeedingDtos{
  public record FormulaItem(@NotBlank String ingredientId,@DecimalMin("0.0001")BigDecimal ratioPct,@NotNull @DecimalMin("0.001")BigDecimal dailyAmountKg){}
  public record CreateFormula(@NotBlank String formulaName,@NotBlank @Pattern(regexp="HERD|STAGE|CUSTOM")String targetType,String targetObjectId,@NotNull @DecimalMin("0.01")BigDecimal dailyIntakeKg,String remark,@NotEmpty@Valid List<FormulaItem>items){}
  public record UpdateIngredient(@NotBlank String ingredientName,@NotBlank String ingredientType,@DecimalMin("0")@DecimalMax("100")BigDecimal dryMatterPct,@DecimalMin("0")@DecimalMax("200")BigDecimal tdnPct,BigDecimal metabolizableEnergyValue,@DecimalMin("0")@DecimalMax("100")BigDecimal crudeProteinPct,@DecimalMin("0")@DecimalMax("100")BigDecimal starchPct,BigDecimal energyValue,BigDecimal gainEnergyValue,@DecimalMin("0")@DecimalMax("100")BigDecimal ndfPct,@DecimalMin("0")@DecimalMax("100")BigDecimal peNdfPct,@DecimalMin("0")@DecimalMax("100")BigDecimal adfPct,@DecimalMin("0")@DecimalMax("100")BigDecimal ashPct,@DecimalMin("0")@DecimalMax("100")BigDecimal crudeFatPct,@DecimalMin("0")@DecimalMax("100")BigDecimal calciumPct,@DecimalMin("0")@DecimalMax("100")BigDecimal phosphorusPct,@DecimalMin("0")@DecimalMax("100")BigDecimal rdpPct,@DecimalMin("0")BigDecimal unitPrice,@NotBlank@Pattern(regexp="ENABLED|DISABLED")String status,String remark,@NotNull Integer version){}
- public record Formula(String formulaId,String formulaName,int versionNo,String targetType,String targetObjectId,BigDecimal dailyIntakeKg,String sourceFile,String status,BigDecimal dryMatterKg,BigDecimal crudeProteinPct,BigDecimal ndfPct,BigDecimal dailyCost,List<FormulaLine>items,int rowVersion){public Formula(String formulaId,String formulaName,int versionNo,String targetType,String targetObjectId,BigDecimal dailyIntakeKg,String sourceFile,String status,BigDecimal dryMatterKg,BigDecimal crudeProteinPct,BigDecimal ndfPct,BigDecimal dailyCost,List<FormulaLine>items){this(formulaId,formulaName,versionNo,targetType,targetObjectId,dailyIntakeKg,sourceFile,status,dryMatterKg,crudeProteinPct,ndfPct,dailyCost,items,0);}}
+  public record FormulaNutrition(BigDecimal tdnPct,BigDecimal metabolizableEnergyValue,BigDecimal energyValue,BigDecimal gainEnergyValue,BigDecimal peNdfPct,BigDecimal adfPct,BigDecimal ashPct,BigDecimal crudeFatPct,BigDecimal calciumPct,BigDecimal phosphorusPct,BigDecimal rdpPct,BigDecimal dryMatterUnitPrice){}
+  public record Formula(String formulaId,String formulaName,int versionNo,String targetType,String targetObjectId,BigDecimal dailyIntakeKg,String sourceFile,String status,BigDecimal dryMatterKg,BigDecimal crudeProteinPct,BigDecimal ndfPct,BigDecimal dailyCost,FormulaNutrition nutrition,List<FormulaLine>items,int rowVersion){public Formula(String formulaId,String formulaName,int versionNo,String targetType,String targetObjectId,BigDecimal dailyIntakeKg,String sourceFile,String status,BigDecimal dryMatterKg,BigDecimal crudeProteinPct,BigDecimal ndfPct,BigDecimal dailyCost,List<FormulaLine>items){this(formulaId,formulaName,versionNo,targetType,targetObjectId,dailyIntakeKg,sourceFile,status,dryMatterKg,crudeProteinPct,ndfPct,dailyCost,null,items,0);}}
  public record UpdateFormula(@NotBlank String formulaName,@NotBlank@Pattern(regexp="HERD|STAGE|CUSTOM")String targetType,String targetObjectId,@NotNull@DecimalMin("0.01")BigDecimal dailyIntakeKg,String remark,@NotEmpty@Valid List<FormulaItem>items,@NotNull Integer version){}
  public record FormulaLine(String ingredientId,String ingredientName,BigDecimal ratioPct,BigDecimal dailyAmountKg,BigDecimal unitPrice){}
  public record RecommendFormula(@Pattern(regexp="LARGE|MEDIUM") String bodySize,
@@ -47,12 +48,12 @@ public final class FeedingDtos{
                                      BigDecimal roughageDryMatterPct,BigDecimal proteinFeedDryMatterPct,NutritionStandardTarget standardTarget,
                                      BigDecimal estimatedDailyCost,BigDecimal pricedCostCoveragePct,List<String>missingPriceIngredients,
                                      List<RecommendationLine>items,List<String>warnings){}
- public record MicronutrientRequest(@NotBlank @Pattern(regexp="GROWING|PREGNANT|LACTATING") String productionStage,
-                                    @NotNull @DecimalMin("0.1") @DecimalMax("40") BigDecimal dryMatterIntakeKg,
-                                    @Min(1) @Max(100000) int cattleCount){}
+  public record MicronutrientRequest(@NotBlank @Pattern(regexp="GROWING|PREGNANT|LACTATING") String productionStage,
+                                     @NotNull @DecimalMin("0.1") @DecimalMax("40") BigDecimal dryMatterIntakeKg,
+                                     @Min(1) @Max(100000) int cattleCount,String formulaId){public MicronutrientRequest(String productionStage,BigDecimal dryMatterIntakeKg,int cattleCount){this(productionStage,dryMatterIntakeKg,cattleCount,null);}}
  public record MicronutrientLine(String category,String nutrientName,String concentrationUnit,BigDecimal targetMin,BigDecimal targetMax,
                                  String intakeUnit,BigDecimal dailyMinPerHead,BigDecimal dailyMaxPerHead,
-                                 BigDecimal herdDailyMin,BigDecimal herdDailyMax,String maximumTolerableConcentration,String deficiencySymptoms){}
+                                  BigDecimal herdDailyMin,BigDecimal herdDailyMax,BigDecimal actualDailyPerHead,BigDecimal gapToMinPerHead,BigDecimal gapToMaxPerHead,String supplyStatus,String maximumTolerableConcentration,String deficiencySymptoms){}
  public record MicronutrientRecommendation(String productionStage,BigDecimal dryMatterIntakeKg,int cattleCount,
                                             List<MicronutrientLine>items,List<String>warnings){}
  public record BreedingNutritionRequest(@NotBlank @Pattern(regexp="REPLACEMENT_GROWTH|MAINTENANCE|LATE_PREGNANCY|LACTATION") String productionStage,
@@ -72,5 +73,7 @@ public final class FeedingDtos{
  public record Action(@NotBlank String reason,@NotNull Integer version){}
  public record ActualItem(@NotBlank String ingredientId,@NotNull @DecimalMin("0")BigDecimal actualAmountKg){}
  public record Execute(@NotNull LocalDateTime executionTime,String deviationNote,@NotNull Integer version,@NotEmpty@Valid List<ActualItem>items){}
- public record ExecutionItem(String executionId,String orderId,LocalDateTime executionTime,String executorId,String executorName,String actualSummary,String deviationNote){}
+   public record ExecutionItem(String executionId,String orderId,LocalDateTime executionTime,String executorId,String executorName,String actualSummary,String deviationNote,String status,String voidReason,String voidedByName,LocalDateTime voidedAt,int orderVersion){}
+  public record Page<T>(long page,long pageSize,long total,List<T>items){}
+  public record IngredientPage(long page,long pageSize,long total,List<Ingredient>items,Map<String,Long>typeCounts){}
 }

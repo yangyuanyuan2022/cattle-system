@@ -23,6 +23,8 @@ export interface Ingredient {
   remark: string | null;
   version: number;
 }
+export interface FeedingPage<T> { page:number; pageSize:number; total:number; items:T[]; }
+export interface IngredientPage extends FeedingPage<Ingredient> { typeCounts:Record<string,number>; }
 export interface FormulaLine {
   ingredientId: string;
   ingredientName: string;
@@ -39,10 +41,24 @@ export interface Formula {
   dailyIntakeKg: number;
   sourceFile: string | null;
   status: string;
-  dryMatterKg: number;
-  crudeProteinPct: number;
-  ndfPct: number;
-  dailyCost: number;
+  dryMatterKg: number | null;
+  crudeProteinPct: number | null;
+  ndfPct: number | null;
+  dailyCost: number | null;
+  nutrition: {
+    tdnPct: number | null;
+    metabolizableEnergyValue: number | null;
+    energyValue: number | null;
+    gainEnergyValue: number | null;
+    peNdfPct: number | null;
+    adfPct: number | null;
+    ashPct: number | null;
+    crudeFatPct: number | null;
+    calciumPct: number | null;
+    phosphorusPct: number | null;
+    rdpPct: number | null;
+    dryMatterUnitPrice: number | null;
+  } | null;
   items: FormulaLine[];
   rowVersion: number;
 }
@@ -127,6 +143,11 @@ export interface MixingExecution {
   executorName: string | null;
   actualSummary: string;
   deviationNote: string | null;
+  status: "EXECUTED" | "VOIDED";
+  voidReason: string | null;
+  voidedByName: string | null;
+  voidedAt: string | null;
+  orderVersion: number;
 }
 export interface MicronutrientRecommendation {
   productionStage: "GROWING" | "PREGNANT" | "LACTATING";
@@ -143,6 +164,10 @@ export interface MicronutrientRecommendation {
     dailyMaxPerHead: number;
     herdDailyMin: number;
     herdDailyMax: number;
+    actualDailyPerHead: number | null;
+    gapToMinPerHead: number | null;
+    gapToMaxPerHead: number | null;
+    supplyStatus: "OK" | "DEFICIENT" | "ABOVE_TARGET" | "UNAVAILABLE";
     maximumTolerableConcentration: string | null;
     deficiencySymptoms: string;
   }[];
@@ -174,6 +199,12 @@ const key = () => ({ "X-Idempotency-Key": crypto.randomUUID() });
 export async function getIngredients() {
   return (await http.get<ApiResponse<Ingredient[]>>("/feeding/ingredients"))
     .data.data;
+}
+export async function getIngredientPage(page=1,pageSize=50,keyword="",ingredientType="") {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (keyword.trim()) params.set("keyword", keyword.trim());
+  if (ingredientType) params.set("ingredientType", ingredientType);
+  return (await http.get<ApiResponse<IngredientPage>>(`/feeding/ingredients/page?${params}`)).data.data;
 }
 export async function createIngredient(p: Record<string, unknown>) {
   return (
@@ -240,6 +271,7 @@ export async function recommendMicronutrients(p: {
   productionStage:string;
   dryMatterIntakeKg:number;
   cattleCount:number;
+  formulaId?:string;
 }) {
   return (
     await http.post<ApiResponse<MicronutrientRecommendation>>(
@@ -305,6 +337,7 @@ export async function getOrders() {
   return (await http.get<ApiResponse<MixingOrder[]>>("/feeding/mixing-orders"))
     .data.data;
 }
+export async function getOrderPage(page=1,pageSize=50) { return (await http.get<ApiResponse<FeedingPage<MixingOrder>>>(`/feeding/mixing-orders/page?page=${page}&pageSize=${pageSize}`)).data.data; }
 export async function deleteOrder(id: string) {
   return (await http.delete<ApiResponse<boolean>>(`/feeding/mixing-orders/${id}`, { headers: key() })).data.data;
 }
@@ -365,6 +398,7 @@ export async function getExecutions() {
     await http.get<ApiResponse<MixingExecution[]>>("/feeding/mixing-executions")
   ).data.data;
 }
-export async function deleteExecution(id: string) {
-  return (await http.delete<ApiResponse<boolean>>(`/feeding/mixing-executions/${id}`, { headers: key() })).data.data;
+export async function getExecutionPage(page=1,pageSize=50) { return (await http.get<ApiResponse<FeedingPage<MixingExecution>>>(`/feeding/mixing-executions/page?page=${page}&pageSize=${pageSize}`)).data.data; }
+export async function voidExecution(id: string, reason: string, version: number) {
+  return (await http.post<ApiResponse<boolean>>(`/feeding/mixing-executions/${id}/void`, { reason, version }, { headers: key() })).data.data;
 }
